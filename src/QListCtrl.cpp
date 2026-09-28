@@ -4,6 +4,7 @@
 #include "stdafx.h"
 #include "CP_Main.h"
 #include "QListCtrl.h"
+#include "DittoWindow.h"
 #include "ProcessPaste.h"
 #include "BitmapHelper.h"
 #include "MainTableFunctions.h"
@@ -508,7 +509,15 @@ void CQListCtrl::OnCustomdrawList(NMHDR* pNMHDR, LRESULT* pResult)
 			}
 		}
 
-		pDC->FillSolidRect(rcItem, crBkgnd);
+		if (DittoRiceEnabled() && DittoWindowIsRiced(m_hWnd) && (rItem.state & LVIS_SELECTED) == 0)
+		{
+			// Unselected rows are left transparent so the frosted backdrop shows through.
+			DittoRiceFillRect(pDC, rcItem);
+		}
+		else
+		{
+			pDC->FillSolidRect(rcItem, crBkgnd);
+		}
 		nOldBKMode = pDC->SetBkMode(TRANSPARENT);
 
 		CRect rcText = rcItem;
@@ -1216,6 +1225,13 @@ BOOL CQListCtrl::OnEraseBkgnd(CDC* pDC)
 
 	CRect rect;
 	GetClientRect(&rect);
+
+	if (DittoRiceEnabled() && DittoWindowIsRiced(m_hWnd))
+	{
+		DittoRiceFillRect(pDC, rect);
+		return TRUE;
+	}
+
 	CBrush myBrush(CGetSetOptions::m_Theme.MainWindowBG());    // dialog background color
 	CBrush* pOld = pDC->SelectObject(&myBrush);
 	BOOL bRes = pDC->PatBlt(0, 0, rect.Width(), rect.Height(), PATCOPY);

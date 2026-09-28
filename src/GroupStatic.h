@@ -24,6 +24,7 @@ public:
 
 	void SetTextColor( COLORREF color )		{ m_dwTextColor = color;	}
 	void SetBkColor( COLORREF color )		{ m_dwBkColor = color;		}
+	void SetTransparentBackground( bool transparent )	{ m_bTransparentBackground = transparent; }
 	void SetFont( int nPointSize, LPCTSTR lpszFaceName, CDC* pDC = NULL );
 	void SetFont(CFont *pFont)				{ CStatic::SetFont(pFont);		}
 	void SetToggleCursor(bool toggle)		{ m_toggleCursorToHand = toggle; }
@@ -46,6 +47,7 @@ protected:
 	CBrush   m_brush;
 	CString  m_strBuff;        // Holds the static controls contents before & after the control is displayed
 	bool m_toggleCursorToHand;
+	bool m_bTransparentBackground;
 
 
 	// Generated message map functions

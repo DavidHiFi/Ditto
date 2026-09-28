@@ -525,6 +525,8 @@ int CQPasteWnd::OnCreate(LPCREATESTRUCT lpCreateStruct)
 
 	InvalidateNc();
 
+	ApplyRiceToWindow(m_hWnd, CGetSetOptions::m_Theme.MainWindowBG());
+
 	return 0;
 }
 
@@ -2226,6 +2228,12 @@ void CQPasteWnd::UpdateFont()
 	m_noSearchResultsStatic.SetBkColor(CGetSetOptions::m_Theme.MainWindowBG());
 	m_noSearchResultsStatic.SetTextColor(CGetSetOptions::m_Theme.ListBoxEvenRowsText());
 	m_noSearchResultsStatic.SetFont(&m_SearchFont);
+
+	if (DittoRiceEnabled())
+	{
+		m_stGroup.SetTransparentBackground(true);
+		m_noSearchResultsStatic.SetTransparentBackground(true);
+	}
 
 	m_lstHeader.CreateSmallFont();
 }
@@ -6730,6 +6738,13 @@ BOOL CQPasteWnd::OnEraseBkgnd(CDC* pDC)
 {
 	CRect rect;
 	GetClientRect(&rect);
+
+	if (DittoRiceEnabled() && DittoWindowIsRiced(m_hWnd))
+	{
+		DittoRiceFillRect(pDC, rect);
+		return TRUE;
+	}
+
 	CBrush myBrush(CGetSetOptions::m_Theme.MainWindowBG());    // dialog background color
 	CBrush* pOld = pDC->SelectObject(&myBrush);
 	BOOL bRes = pDC->PatBlt(0, 0, rect.Width(), rect.Height(), PATCOPY);
@@ -8324,6 +8339,8 @@ void CQPasteWnd::SetTransparency(int percent)
 		CGetSetOptions::SetTransparencyPercent(percent);
 		CGetSetOptions::SetEnableTransparency(TRUE);
 
+		RemoveRiceFromWindow(m_hWnd);
+
 		m_Alpha.SetTransparent(TRUE);
 
 		float fPercent = percent / (float)100.0;
@@ -8334,6 +8351,8 @@ void CQPasteWnd::SetTransparency(int percent)
 	{
 		CGetSetOptions::SetEnableTransparency(FALSE);
 		m_Alpha.SetTransparent(FALSE);
+
+		ApplyRiceToWindow(m_hWnd, CGetSetOptions::m_Theme.MainWindowBG());
 	}
 }
 
@@ -8342,6 +8361,8 @@ void CQPasteWnd::SetCurrentTransparency()
 	//Set the transparency
 	if (CGetSetOptions::GetEnableTransparency())
 	{
+		RemoveRiceFromWindow(m_hWnd);
+
 		m_Alpha.SetTransparent(TRUE);
 
 		float fPercent = CGetSetOptions::GetTransparencyPercent() / (float)100.0;
@@ -8351,6 +8372,8 @@ void CQPasteWnd::SetCurrentTransparency()
 	else
 	{
 		m_Alpha.SetTransparent(FALSE);
+
+		ApplyRiceToWindow(m_hWnd, CGetSetOptions::m_Theme.MainWindowBG());
 	}
 }
 

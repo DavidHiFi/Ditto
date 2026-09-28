@@ -4,6 +4,7 @@
 #include "stdafx.h"
 #include "SymbolEdit.h"
 #include "cp_main.h"
+#include "DittoWindow.h"
 #include "QListCtrl.h"
 #include "..\Shared\TextConvert.h"
 
@@ -470,7 +471,14 @@ void CSymbolEdit::OnPaint()
 	textRect.right -= HIWORD(margins);
 
 	// Clearing the background
-	dc.FillSolidRect(rect, GetSysColor(COLOR_WINDOW));	
+	if (DittoRiceEnabled() && DittoWindowIsRiced(m_hWnd))
+	{
+		DittoRiceFillRect(&dc, rect);
+	}
+	else
+	{
+		dc.FillSolidRect(rect, GetSysColor(COLOR_WINDOW));
+	}
 
 	if (m_hSymbolIcon)
 	{
@@ -524,6 +532,10 @@ void CSymbolEdit::OnPaint()
 
 		dc.SelectObject(oldFont);
 		dc.SetTextColor(oldColor);
+	}
+	else if (DittoRiceEnabled() && DittoWindowIsRiced(m_hWnd))
+	{
+		DittoRiceFillRect(&dc, rect);
 	}
 	else
 	{
@@ -612,6 +624,11 @@ HBRUSH CSymbolEdit::CtlColor(CDC* pDC, UINT n)
 		pDC->SetTextColor(CGetSetOptions::m_Theme.SearchTextBoxFocusText());
 		pDC->SetBkColor(CGetSetOptions::m_Theme.SearchTextBoxFocusBG());
 		color = CGetSetOptions::m_Theme.SearchTextBoxFocusBG();
+	}
+	else if (DittoRiceEnabled() && DittoWindowIsRiced(m_hWnd))
+	{
+		pDC->SetBkColor(RGB(0, 0, 0));
+		color = RGB(0, 0, 0);
 	}
 	else
 	{
@@ -952,6 +969,14 @@ void CSymbolEdit::OnNcPaint()
 		dc.FillSolidRect(b, CGetSetOptions::m_Theme.SearchTextBoxFocusBG());
 
 		c = CGetSetOptions::m_Theme.SearchTextBoxFocusBorder();
+	}
+	else if (DittoRiceEnabled() && DittoWindowIsRiced(m_hWnd))
+	{
+		// Transparent strips plus an invisible (black) frame let the frosted backdrop show.
+		dc.FillSolidRect(t, RGB(0, 0, 0));
+		dc.FillSolidRect(b, RGB(0, 0, 0));
+
+		c = RGB(0, 0, 0);
 	}
 	else
 	{

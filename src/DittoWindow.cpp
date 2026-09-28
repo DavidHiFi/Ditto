@@ -4,6 +4,194 @@
 #include "Options.h"
 #include <ShellScalingAPI.h>
 
+/////////////////////////////////////////////////////////////////////////////
+// Frosted "rice" support
+//
+// DWM treats pure black (0x00000000) pixels of an acrylic window as
+// "unpainted", so while this mode is active all background fills are done
+// with black and the current theme background color is used as the acrylic
+// backdrop tint. The rounded corner preference is Windows 11 only; on older
+// systems both effects are simply ignored.
+/////////////////////////////////////////////////////////////////////////////
+
+#define DITTO_RICE_ACCENT_ALPHA 0xD0
+
+#define RICE_WCA_ACCENT_POLICY 19
+#define RICE_ACCENT_STATE_DISABLED 0
+#define RICE_ACCENT_STATE_ACRYLIC_BLURBEHIND 4
+#define RICE_DWMWA_USE_IMMERSIVE_DARK_MODE 20
+#define RICE_DWMWA_USE_IMMERSIVE_DARK_MODE_OLD 19
+#define RICE_DWMWA_WINDOW_CORNER_PREFERENCE 33
+#define RICE_DWMWCP_DEFAULT 0
+#define RICE_DWMWCP_ROUND 2
+
+typedef struct _RICE_ACCENT_POLICY
+{
+	DWORD nAccentState;
+	DWORD nFlags;
+	DWORD nColor;
+	DWORD nAnimationId;
+} RICE_ACCENT_POLICY;
+
+typedef struct _RICE_WINDOWCOMPOSITIONATTRIBDATA
+{
+	DWORD nAttribute;
+	PVOID pData;
+	SIZE_T ulDataSize;
+} RICE_WINDOWCOMPOSITIONATTRIBDATA;
+
+typedef BOOL(WINAPI *RICE_SETWINDOWCOMPOSITIONATTRIBUTE)(HWND, RICE_WINDOWCOMPOSITIONATTRIBDATA*);
+typedef HRESULT(WINAPI *RICE_DWMSETWINDOWATTRIBUTE)(HWND, DWORD, LPCVOID, DWORD);
+
+static RICE_DWMSETWINDOWATTRIBUTE RiceDwmSetWindowAttribute()
+{
+	static RICE_DWMSETWINDOWATTRIBUTE fn = NULL;
+	static bool bLoaded = false;
+
+	if (bLoaded == false)
+	{
+		bLoaded = true;
+		HMODULE dwmapi = ::LoadLibrary(_T("dwmapi.dll"));
+		if (dwmapi != NULL)
+		{
+			fn = (RICE_DWMSETWINDOWATTRIBUTE)::GetProcAddress(dwmapi, "DwmSetWindowAttribute");
+		}
+	}
+
+	return fn;
+}
+
+static RICE_SETWINDOWCOMPOSITIONATTRIBUTE RiceSetWindowCompositionAttribute()
+{
+	static RICE_SETWINDOWCOMPOSITIONATTRIBUTE fn = NULL;
+	static bool bLoaded = false;
+
+	if (bLoaded == false)
+	{
+		bLoaded = true;
+		HMODULE user32 = ::GetModuleHandle(_T("user32.dll"));
+		if (user32 != NULL)
+		{
+			fn = (RICE_SETWINDOWCOMPOSITIONATTRIBUTE)::GetProcAddress(user32, "SetWindowCompositionAttribute");
+		}
+	}
+
+	return fn;
+}
+
+static void RiceSetAccent(HWND hWnd, DWORD nAccentState, COLORREF color)
+{
+	RICE_SETWINDOWCOMPOSITIONATTRIBUTE setCompositionAttribute = RiceSetWindowCompositionAttribute();
+	if (setCompositionAttribute == NULL)
+	{
+		return;
+	}
+
+	RICE_ACCENT_POLICY policy = { 0 };
+	policy.nAccentState = nAccentState;
+	policy.nFlags = 0;
+	policy.nColor = ((DWORD)DITTO_RICE_ACCENT_ALPHA << 24) |
+		((DWORD)GetBValue(color) << 16) |
+		((DWORD)GetGValue(color) << 8) |
+		(DWORD)GetRValue(color);
+
+	RICE_WINDOWCOMPOSITIONATTRIBDATA data = { RICE_WCA_ACCENT_POLICY, &policy, sizeof(policy) };
+	setCompositionAttribute(hWnd, &data);
+}
+
+bool DittoRiceEnabled()
+{
+	// Set DITTO_NO_RICE=1 in the environment to launch with the original solid look.
+	static int s_nEnabled = -1;
+
+	if (s_nEnabled < 0)
+	{
+		TCHAR value[8] = { 0 };
+		DWORD nLength = ::GetEnvironmentVariable(_T("DITTO_NO_RICE"), value, 8);
+		s_nEnabled = (nLength > 0 && value[0] == _T('1')) ? 0 : 1;
+	}
+
+	return s_nEnabled == 1;
+}
+
+bool DittoWindowIsRiced(HWND hWnd)
+{
+	if (hWnd == NULL)
+	{
+		return false;
+	}
+
+	HWND hRoot = ::GetAncestor(hWnd, GA_ROOT);
+	if (hRoot == NULL)
+	{
+		hRoot = hWnd;
+	}
+
+	return ::GetProp(hRoot, _T("DittoRiceEnabled")) != NULL;
+}
+
+void DittoRiceFillRect(CDC* pDC, const CRect& rect)
+{
+	// Black pixels are "unpainted" to DWM on an acrylic window, so this both
+	// shows the frosted backdrop and clears any stale pixels in the region.
+	pDC->FillSolidRect(rect, RGB(0, 0, 0));
+}
+
+void ApplyRiceToWindow(HWND hWnd, COLORREF backgroundColor)
+{
+	if (hWnd == NULL || ::IsWindow(hWnd) == FALSE)
+	{
+		return;
+	}
+
+	if (DittoRiceEnabled() == false)
+	{
+		return;
+	}
+
+	// A layered window (the user's own transparency setting) cannot show the acrylic backdrop.
+	if ((::GetWindowLong(hWnd, GWL_EXSTYLE) & WS_EX_LAYERED) != 0)
+	{
+		return;
+	}
+
+	RICE_DWMSETWINDOWATTRIBUTE dwmSetWindowAttribute = RiceDwmSetWindowAttribute();
+	if (dwmSetWindowAttribute != NULL)
+	{
+		// DWM builds the acrylic material from the window's dark/light mode, so the
+		// theme tint only reads correctly when the window is marked dark.
+		BOOL bDarkMode = TRUE;
+		dwmSetWindowAttribute(hWnd, RICE_DWMWA_USE_IMMERSIVE_DARK_MODE, &bDarkMode, sizeof(bDarkMode));
+		dwmSetWindowAttribute(hWnd, RICE_DWMWA_USE_IMMERSIVE_DARK_MODE_OLD, &bDarkMode, sizeof(bDarkMode));
+
+		DWORD nCornerPreference = RICE_DWMWCP_ROUND;
+		dwmSetWindowAttribute(hWnd, RICE_DWMWA_WINDOW_CORNER_PREFERENCE, &nCornerPreference, sizeof(nCornerPreference));
+	}
+
+	::SetProp(hWnd, _T("DittoRiceEnabled"), (HANDLE)1);
+
+	RiceSetAccent(hWnd, RICE_ACCENT_STATE_ACRYLIC_BLURBEHIND, backgroundColor);
+}
+
+void RemoveRiceFromWindow(HWND hWnd)
+{
+	if (hWnd == NULL || ::IsWindow(hWnd) == FALSE)
+	{
+		return;
+	}
+
+	::RemoveProp(hWnd, _T("DittoRiceEnabled"));
+
+	RICE_DWMSETWINDOWATTRIBUTE dwmSetWindowAttribute = RiceDwmSetWindowAttribute();
+	if (dwmSetWindowAttribute != NULL)
+	{
+		DWORD nCornerPreference = RICE_DWMWCP_DEFAULT;
+		dwmSetWindowAttribute(hWnd, RICE_DWMWA_WINDOW_CORNER_PREFERENCE, &nCornerPreference, sizeof(nCornerPreference));
+	}
+
+	RiceSetAccent(hWnd, RICE_ACCENT_STATE_DISABLED, RGB(0, 0, 0));
+}
+
 CDittoWindow::CDittoWindow(void)
 {
 	m_captionBorderWidth = m_dpi.Scale(25);
@@ -400,14 +588,24 @@ void CDittoWindow::DoNcPaint(CWnd *pWnd)
 	}
 
 
-	HBRUSH leftColor = CreateSolidBrush(m_CaptionColorLeft);
-	HBRUSH rightColor = CreateSolidBrush(m_CaptionColorRight);	
+	if (DittoRiceEnabled() && DittoWindowIsRiced(pWnd->m_hWnd))
+	{
+		// Leave the caption strip transparent so the frosted backdrop shows through.
+		HBRUSH riceBrush = (HBRUSH)::GetStockObject(BLACK_BRUSH);
+		::FillRect(dc, &leftRect, riceBrush);
+		::FillRect(dc, &rightRect, riceBrush);
+	}
+	else
+	{
+		HBRUSH leftColor = CreateSolidBrush(m_CaptionColorLeft);
+		HBRUSH rightColor = CreateSolidBrush(m_CaptionColorRight);
 
-	::FillRect(dc, &leftRect, leftColor);
-	::FillRect(dc, &rightRect, rightColor);
+		::FillRect(dc, &leftRect, leftColor);
+		::FillRect(dc, &rightRect, rightColor);
 
-	DeleteObject(leftColor);
-	DeleteObject(rightColor);
+		DeleteObject(leftColor);
+		DeleteObject(rightColor);
+	}
 
 
 	int nOldBKMode = dc.SetBkMode(TRANSPARENT);

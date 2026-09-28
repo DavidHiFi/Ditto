@@ -19,6 +19,7 @@ CGroupStatic::CGroupStatic()
 	m_dwTextColor = 0;
 	m_dwBkColor = RGB(255, 255, 255);
 	m_toggleCursorToHand = false;
+	m_bTransparentBackground = false;
 	m_pFont = NULL;
 }
 
@@ -49,6 +50,16 @@ BOOL CGroupStatic::OnChildNotify(UINT message, WPARAM wParam, LPARAM lParam, LRE
 
    // Set the foreground color
    ::SetTextColor( hdcChild, m_dwTextColor );
+
+   // Frosted "rice" windows: paint the background black (DWM shows the acrylic
+   // backdrop through black pixels) so the label sits directly on the frost.
+   if(m_bTransparentBackground)
+   {
+      ::SetBkMode(hdcChild, TRANSPARENT);
+      ::SetBkColor(hdcChild, RGB(0, 0, 0));
+      *pLResult = (LRESULT)(::GetStockObject(BLACK_BRUSH));
+      return TRUE;
+   }
 
    // If a background color is pre-determined
    if(m_dwBkColor != -1)

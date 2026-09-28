@@ -4,6 +4,16 @@
 #include "GdiImageDrawer.h"
 #include "DPI.h"
 
+class CDC;
+
+// Frosted "rice" support: Windows 11 rounded corners and an acrylic backdrop
+// tinted with the current theme background color (see DittoWindow.cpp).
+bool DittoRiceEnabled();
+bool DittoWindowIsRiced(HWND hWnd);
+void ApplyRiceToWindow(HWND hWnd, COLORREF backgroundColor);
+void RemoveRiceFromWindow(HWND hWnd);
+void DittoRiceFillRect(CDC* pDC, const CRect& rect);
+
 #define BUTTON_CLOSE 1
 #define BUTTON_CHEVRON 2
 #define BUTTON_MINIMIZE 3
