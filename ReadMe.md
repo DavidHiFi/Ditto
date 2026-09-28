@@ -36,3 +36,23 @@ Free code signing on Windows binaries provided by SignPath.io, certificate by Si
 
 <img src="ditto.gif">
 
+
+## This fork: frosted (mica) rice
+
+A personal fork of Ditto that renders the quick-paste window as a rounded,
+frosted acrylic surface over the active theme:
+
+- Windows 11 rounded corners, plus an acrylic backdrop tinted with the theme's
+  `MainWindowBG` color.
+- Background fills paint black in this mode. DWM treats black pixels in an
+  acrylic window as unpainted, which reveals the backdrop and clears stale paint.
+- The window is marked as immersive dark so DWM builds the dark material.
+- `DITTO_NO_RICE=1` launches with the original solid look.
+
+Everything else is upstream Ditto, unchanged. Upstream's GPL-3.0 license is kept.
+
+Build with the VS 2022 toolset (upstream projects now target v145):
+
+```
+msbuild CP_Main_10.sln /p:Configuration=Release /p:Platform=x64 /p:PlatformToolset=v143
+```
