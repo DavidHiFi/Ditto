@@ -175,6 +175,7 @@ protected:
     COLORREF HslToRgb(double h, double s, double l);
 		
 	void DrawCheckerboard(CDC* pDC, CRect rect);
+	COLORREF RowSeparatorColor();
 	WCHAR *m_pwchTip;
 	TCHAR *m_pchTip;
 	HFONT m_SmallFont;
@@ -197,6 +198,7 @@ protected:
 	int m_rowHeight;
 	CString m_searchText;
 	BOOL m_showIfClipWasPasted;
+	BOOL m_bShowRowSeparators;
 	CAccels *m_pToolTipActions;
 	CRichEditCtrlEx m_rtfFormater;
 	CDPI *m_windowDpi;

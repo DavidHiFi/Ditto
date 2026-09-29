@@ -213,6 +213,7 @@ CQListCtrl::CQListCtrl()
 	m_mouseOverScrollAreaStart = 0;
 	m_showIfClipWasPasted = TRUE;
 	m_bShowTextForFirstTenHotKeys = true;
+	m_bShowRowSeparators = true;
 	m_pToolTipActions = NULL;
 }
 
@@ -520,6 +521,19 @@ void CQListCtrl::OnCustomdrawList(NMHDR* pNMHDR, LRESULT* pResult)
 		}
 		nOldBKMode = pDC->SetBkMode(TRANSPARENT);
 
+		if (m_bShowRowSeparators)
+		{
+			// Thin divider under each entry so clips read as separate rows. Blends
+			// the theme's two row shades so it matches whatever palette is loaded.
+			COLORREF crDivider = RowSeparatorColor();
+			int nDividerH = m_windowDpi->Scale(1);
+			if (nDividerH < 1)
+				nDividerH = 1;
+			CRect rcDivider(rcItem.left, rcItem.bottom - nDividerH, rcItem.right, rcItem.bottom);
+			if (rcDivider.Width() > 0)
+				pDC->FillSolidRect(rcDivider, crDivider);
+		}
+
 		CRect rcText = rcItem;
 		rcText.left += m_windowDpi->Scale(ROW_LEFT_BORDER);
 		rcText.top += m_windowDpi->Scale(1);
@@ -802,6 +816,31 @@ static COLORREF OklchToRgb(double l, double c, double h)
 	B = max(0, min(255, B));
 
 	return RGB(R, G, B);
+}
+
+
+COLORREF CQListCtrl::RowSeparatorColor()
+{
+	// Blend the two alternating row shades: always sits between them, so the
+	// divider reads as a quiet line on light or dark palettes (Catppuccin Mocha,
+	// default themes, user themes) without a hard-coded colour.
+	COLORREF cOdd = CGetSetOptions::m_Theme.ListBoxOddRowsBG();
+	COLORREF cEven = CGetSetOptions::m_Theme.ListBoxEvenRowsBG();
+	int r = (GetRValue(cOdd) + GetRValue(cEven)) / 2;
+	int g = (GetGValue(cOdd) + GetGValue(cEven)) / 2;
+	int b = (GetBValue(cOdd) + GetBValue(cEven)) / 2;
+
+	// If a theme uses the same BG for both rows, nudge toward the text colour so
+	// the line is still visible instead of collapsing into the background.
+	if (r == GetRValue(cOdd) && g == GetGValue(cOdd) && b == GetBValue(cOdd))
+	{
+		COLORREF cText = CGetSetOptions::m_Theme.ListBoxOddRowsText();
+		r = (r + GetRValue(cText)) / 2;
+		g = (g + GetGValue(cText)) / 2;
+		b = (b + GetBValue(cText)) / 2;
+	}
+
+	return RGB(r, g, b);
 }
 
 
