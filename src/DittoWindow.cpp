@@ -42,6 +42,26 @@ typedef struct _RICE_WINDOWCOMPOSITIONATTRIBDATA
 
 typedef BOOL(WINAPI *RICE_SETWINDOWCOMPOSITIONATTRIBUTE)(HWND, RICE_WINDOWCOMPOSITIONATTRIBDATA*);
 typedef HRESULT(WINAPI *RICE_DWMSETWINDOWATTRIBUTE)(HWND, DWORD, LPCVOID, DWORD);
+typedef HRESULT(WINAPI *RICE_DWMEXTENDFRAMEINTOCLIENTAREA)(HWND, LPCVOID);
+typedef HRESULT(WINAPI *RICE_DWMENABLEBLURBEHINDWINDOW)(HWND, LPCVOID);
+
+#define RICE_DWM_BB_ENABLE 0x00000001
+
+typedef struct _RICE_DWM_BLURBEHIND
+{
+	DWORD dwFlags;
+	BOOL fEnable;
+	HRGN hRgnBlur;
+	BOOL fTransitionOnMaximized;
+} RICE_DWM_BLURBEHIND;
+
+typedef struct _RICE_MARGINS
+{
+	int cxLeftWidth;
+	int cxRightWidth;
+	int cyTopHeight;
+	int cyBottomHeight;
+} RICE_MARGINS;
 
 static RICE_DWMSETWINDOWATTRIBUTE RiceDwmSetWindowAttribute()
 {
@@ -55,6 +75,42 @@ static RICE_DWMSETWINDOWATTRIBUTE RiceDwmSetWindowAttribute()
 		if (dwmapi != NULL)
 		{
 			fn = (RICE_DWMSETWINDOWATTRIBUTE)::GetProcAddress(dwmapi, "DwmSetWindowAttribute");
+		}
+	}
+
+	return fn;
+}
+
+static RICE_DWMEXTENDFRAMEINTOCLIENTAREA RiceDwmExtendFrameIntoClientArea()
+{
+	static RICE_DWMEXTENDFRAMEINTOCLIENTAREA fn = NULL;
+	static bool bLoaded = false;
+
+	if (bLoaded == false)
+	{
+		bLoaded = true;
+		HMODULE dwmapi = ::LoadLibrary(_T("dwmapi.dll"));
+		if (dwmapi != NULL)
+		{
+			fn = (RICE_DWMEXTENDFRAMEINTOCLIENTAREA)::GetProcAddress(dwmapi, "DwmExtendFrameIntoClientArea");
+		}
+	}
+
+	return fn;
+}
+
+static RICE_DWMENABLEBLURBEHINDWINDOW RiceDwmEnableBlurBehindWindow()
+{
+	static RICE_DWMENABLEBLURBEHINDWINDOW fn = NULL;
+	static bool bLoaded = false;
+
+	if (bLoaded == false)
+	{
+		bLoaded = true;
+		HMODULE dwmapi = ::LoadLibrary(_T("dwmapi.dll"));
+		if (dwmapi != NULL)
+		{
+			fn = (RICE_DWMENABLEBLURBEHINDWINDOW)::GetProcAddress(dwmapi, "DwmEnableBlurBehindWindow");
 		}
 	}
 
@@ -166,6 +222,36 @@ void ApplyRiceToWindow(HWND hWnd, COLORREF backgroundColor)
 
 		DWORD nCornerPreference = RICE_DWMWCP_ROUND;
 		dwmSetWindowAttribute(hWnd, RICE_DWMWA_WINDOW_CORNER_PREFERENCE, &nCornerPreference, sizeof(nCornerPreference));
+	}
+
+	// Window transparency helpers (Windhawk mods, older transparency paths) can
+	// leave the legacy DWM blur-behind flag enabled, which switches the window to
+	// per-pixel-alpha compositing: the black "unpainted" fills then show whatever
+	// is behind the window, sharp, instead of the frosted backdrop. Clear it so
+	// this re-application always starts from the plain acrylic state.
+	RICE_DWMENABLEBLURBEHINDWINDOW dwmEnableBlurBehindWindow = RiceDwmEnableBlurBehindWindow();
+	if (dwmEnableBlurBehindWindow != NULL)
+	{
+		RICE_DWM_BLURBEHIND blurBehind = { 0 };
+		blurBehind.dwFlags = RICE_DWM_BB_ENABLE;
+		blurBehind.fEnable = FALSE;
+		dwmEnableBlurBehindWindow(hWnd, &blurBehind);
+	}
+
+	// The acrylic backdrop composites through the client area only where the DWM
+	// frame is extended. A fresh window has the whole-window extension implied,
+	// but reset paths (mod unload/restore, theme changes) zero it, which leaves
+	// the freshly applied accent policy invisible (black fills). Re-extend the
+	// frame over the whole window every time so the frosted state has no memory.
+	RICE_DWMEXTENDFRAMEINTOCLIENTAREA dwmExtendFrameIntoClientArea = RiceDwmExtendFrameIntoClientArea();
+	if (dwmExtendFrameIntoClientArea != NULL)
+	{
+		RICE_MARGINS margins = { 0 };
+		margins.cxLeftWidth = -1;
+		margins.cxRightWidth = -1;
+		margins.cyTopHeight = -1;
+		margins.cyBottomHeight = -1;
+		dwmExtendFrameIntoClientArea(hWnd, &margins);
 	}
 
 	::SetProp(hWnd, _T("DittoRiceEnabled"), (HANDLE)1);

@@ -101,6 +101,7 @@ BEGIN_MESSAGE_MAP(CQPasteWnd, CWndEx)
 	ON_WM_SETFOCUS()
 	ON_WM_KILLFOCUS()
 	ON_WM_ACTIVATE()
+	ON_WM_SHOWWINDOW()
 	ON_COMMAND(ID_MENU_LINESPERROW_1, OnMenuLinesperrow1)
 	ON_COMMAND(ID_MENU_LINESPERROW_2, OnMenuLinesperrow2)
 	ON_COMMAND(ID_MENU_LINESPERROW_3, OnMenuLinesperrow3)
@@ -862,6 +863,23 @@ void CQPasteWnd::OnActivate(UINT nState, CWnd* pWndOther, BOOL bMinimized)
 			//Unregister the global hot keys for the last ten copies
 			g_HotKeys.UnregisterAll(false, true);
 		}
+	}
+}
+
+void CQPasteWnd::OnShowWindow(BOOL bShow, UINT nStatus)
+{
+	CWnd::OnShowWindow(bShow, nStatus);
+
+	// The popup window lives for the whole process run, but its DWM composition
+	// state is not guaranteed to survive that long: mod unload/restore paths and
+	// other system events reset the acrylic backdrop, the frame extension and the
+	// corner rounding while the popup is hidden. The activation path re-applies
+	// some of it, but shows that do not activate (commands, restore, first show of
+	// a hidden window) can miss it. Re-apply on every show; the call is idempotent
+	// and sets the same state, so nothing repaints when the look was never lost.
+	if (bShow)
+	{
+		SetCurrentTransparency();
 	}
 }
 

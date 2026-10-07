@@ -356,6 +356,7 @@ protected:
     afx_msg void OnSetFocus(CWnd *pOldWnd);
 	afx_msg void OnKillFocus(CWnd *pOldWnd);
     afx_msg void OnActivate(UINT nState, CWnd *pWndOther, BOOL bMinimized);
+	afx_msg void OnShowWindow(BOOL bShow, UINT nStatus);
     afx_msg void OnMenuLinesperrow1();
     afx_msg void OnMenuLinesperrow2();
     afx_msg void OnMenuLinesperrow3();
