@@ -238,21 +238,10 @@ void ApplyRiceToWindow(HWND hWnd, COLORREF backgroundColor)
 		dwmEnableBlurBehindWindow(hWnd, &blurBehind);
 	}
 
-	// The acrylic backdrop composites through the client area only where the DWM
-	// frame is extended. A fresh window has the whole-window extension implied,
-	// but reset paths (mod unload/restore, theme changes) zero it, which leaves
-	// the freshly applied accent policy invisible (black fills). Re-extend the
-	// frame over the whole window every time so the frosted state has no memory.
-	RICE_DWMEXTENDFRAMEINTOCLIENTAREA dwmExtendFrameIntoClientArea = RiceDwmExtendFrameIntoClientArea();
-	if (dwmExtendFrameIntoClientArea != NULL)
-	{
-		RICE_MARGINS margins = { 0 };
-		margins.cxLeftWidth = -1;
-		margins.cxRightWidth = -1;
-		margins.cyTopHeight = -1;
-		margins.cyBottomHeight = -1;
-		dwmExtendFrameIntoClientArea(hWnd, &margins);
-	}
+	// Note: no DwmExtendFrameIntoClientArea here. Re-extending the frame with
+	// (-1,-1,-1,-1) adds a visible glass-edge haze at the rounded corners that
+	// the original look does not have, and the accent policy composites fine
+	// without an explicit extension on a window that was never touched by one.
 
 	::SetProp(hWnd, _T("DittoRiceEnabled"), (HANDLE)1);
 
