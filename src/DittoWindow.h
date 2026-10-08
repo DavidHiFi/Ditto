@@ -6,9 +6,10 @@
 
 class CDC;
 
-// Frosted "rice" support: Windows 11 rounded corners and a frosted acrylic
-// backdrop (system acrylic backdrop on Windows 11 22H2+, accent acrylic
-// fallback elsewhere; mode-aware fill helpers, see DittoWindow.cpp).
+// Frosted "rice" support: Windows 11 rounded corners and an acrylic backdrop
+// tinted with the current theme background color (accent-acrylic model).
+// Mode-aware fill helpers exist so a different compositing model can be
+// reintroduced cleanly (see DittoWindow.cpp and commit c7e9de5).
 bool DittoRiceEnabled();
 bool DittoWindowIsRiced(HWND hWnd);
 int DittoWindowRiceMode(HWND hWnd);
