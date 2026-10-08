@@ -47,6 +47,12 @@ frosted acrylic surface over the active theme:
 - Background fills paint black in this mode. DWM treats black pixels in an
   acrylic window as unpainted, which reveals the backdrop and clears stale paint.
 - The window is marked as immersive dark so DWM builds the dark material.
+- The stock square caption border is skipped in this mode: its corners were
+  square-drawn and got clipped away by the window's rounded arcs at every
+  corner. The frosted backdrop draws its own corner-fitting outline instead.
+- The frosted state rebuilds itself every time the popup shows, so the
+  fullscreen-game and Windhawk state resets that used to leave the popup flat
+  or see-through no longer need a restart to heal.
 - `DITTO_NO_RICE=1` launches with the original solid look.
 
 Everything else is upstream Ditto, unchanged. Upstream's GPL-3.0 license is kept.
