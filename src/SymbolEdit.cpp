@@ -629,6 +629,11 @@ HBRUSH CSymbolEdit::CtlColor(CDC* pDC, UINT n)
 	{
 		pDC->SetBkColor(RGB(0, 0, 0));
 		color = RGB(0, 0, 0);
+		if (DittoWindowRiceMode(m_hWnd) == 2)	// system backdrop: no black fills
+		{
+			pDC->SetBkColor(CGetSetOptions::m_Theme.MainWindowBG());
+			color = CGetSetOptions::m_Theme.MainWindowBG();
+		}
 	}
 	else
 	{
@@ -970,9 +975,11 @@ void CSymbolEdit::OnNcPaint()
 
 		c = CGetSetOptions::m_Theme.SearchTextBoxFocusBorder();
 	}
-	else if (DittoRiceEnabled() && DittoWindowIsRiced(m_hWnd))
+	else if (DittoRiceEnabled() && DittoWindowIsRiced(m_hWnd) && DittoWindowRiceMode(m_hWnd) == 1)
 	{
-		// Transparent strips plus an invisible (black) frame let the frosted backdrop show.
+		// Legacy accent acrylic only: transparent strips plus an invisible
+		// (black) frame let the frosted backdrop show. On the system backdrop
+		// black would paint solid, so that path uses the theme colors below.
 		dc.FillSolidRect(t, RGB(0, 0, 0));
 		dc.FillSolidRect(b, RGB(0, 0, 0));
 

@@ -4,6 +4,7 @@
 #include "stdafx.h"
 #include "cp_main.h"
 #include "GroupStatic.h"
+#include "DittoWindow.h"
 
 #ifdef _DEBUG
 #define new DEBUG_NEW
@@ -51,13 +52,24 @@ BOOL CGroupStatic::OnChildNotify(UINT message, WPARAM wParam, LPARAM lParam, LRE
    // Set the foreground color
    ::SetTextColor( hdcChild, m_dwTextColor );
 
-   // Frosted "rice" windows: paint the background black (DWM shows the acrylic
-   // backdrop through black pixels) so the label sits directly on the frost.
+   // Frosted "rice" windows: the label sits directly on the frost. On the
+   // legacy accent acrylic that means a black background (black pixels show
+   // the backdrop). On the system backdrop black would paint opaque black
+   // over the material, so the theme background color is used instead.
    if(m_bTransparentBackground)
    {
       ::SetBkMode(hdcChild, TRANSPARENT);
       ::SetBkColor(hdcChild, RGB(0, 0, 0));
-      *pLResult = (LRESULT)(::GetStockObject(BLACK_BRUSH));
+      if (::DittoWindowRiceMode(m_hWnd) == 2)	// RICE_MODE_BACKDROP (DittoWindow.h)
+      {
+		  m_brush.DeleteObject();
+		  m_brush.CreateSolidBrush(CGetSetOptions::m_Theme.MainWindowBG());
+		  *pLResult = (LRESULT)(m_brush.GetSafeHandle());
+      }
+      else
+      {
+		  *pLResult = (LRESULT)(::GetStockObject(BLACK_BRUSH));
+      }
       return TRUE;
    }
 

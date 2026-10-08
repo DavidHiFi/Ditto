@@ -22,8 +22,22 @@
 #define RICE_DWMWA_USE_IMMERSIVE_DARK_MODE 20
 #define RICE_DWMWA_USE_IMMERSIVE_DARK_MODE_OLD 19
 #define RICE_DWMWA_WINDOW_CORNER_PREFERENCE 33
+#define RICE_DWMWA_SYSTEMBACKDROP_TYPE 38
 #define RICE_DWMWCP_DEFAULT 0
 #define RICE_DWMWCP_ROUND 2
+
+// System backdrop types (DWMWA_SYSTEMBACKDROP_TYPE), Windows 11 22H2+.
+#define RICE_DWMSBT_AUTO 1
+#define RICE_DWMSBT_TRANSIENTWINDOW 4	// system acrylic, drawn inside the window's rounded corners
+
+// Which compositing model a window's rice uses.
+// ACCENT: undocumented accent acrylic, "GDI black" pixels show the frosted backdrop.
+// BACKDROP: documented system backdrop; unpainted pixels show it, opaque paint covers it.
+#define RICE_MODE_ACCENT 1
+#define RICE_MODE_BACKDROP 2
+
+// First Windows release with DWMWA_SYSTEMBACKDROP_TYPE (Windows 11 22H2).
+#define RICE_SYSTEMBACKDROP_BUILD 22621
 
 typedef struct _RICE_ACCENT_POLICY
 {
@@ -186,10 +200,93 @@ bool DittoWindowIsRiced(HWND hWnd)
 	return ::GetProp(hRoot, _T("DittoRiceEnabled")) != NULL;
 }
 
+int DittoWindowRiceMode(HWND hWnd)
+{
+	if (hWnd == NULL)
+	{
+		return RICE_MODE_ACCENT;
+	}
+
+	HWND hRoot = ::GetAncestor(hWnd, GA_ROOT);
+	if (hRoot == NULL)
+	{
+		hRoot = hWnd;
+	}
+
+	HANDLE hMode = ::GetProp(hRoot, _T("DittoRiceMode"));
+	if (hMode == (HANDLE)(INT_PTR)RICE_MODE_BACKDROP)
+	{
+		return RICE_MODE_BACKDROP;
+	}
+
+	return RICE_MODE_ACCENT;
+}
+
+bool RiceOsSupportsSystemBackdrop()
+{
+	static bool s_bChecked = false;
+	static bool s_bSupported = false;
+
+	if (s_bChecked == false)
+	{
+		s_bChecked = true;
+
+		typedef struct _RICE_OSVERSIONINFOEXW
+		{
+			ULONG dwOSVersionInfoSize;
+			ULONG dwMajorVersion;
+			ULONG dwMinorVersion;
+			ULONG dwBuildNumber;
+			ULONG dwPlatformId;
+			WCHAR szCSDVersion[128];
+			WORD wServicePackMajor;
+			WORD wServicePackMinor;
+			WORD wSuiteMask;
+			WORD wProductType;
+			WORD wReserved;
+		} RICE_OSVERSIONINFOEXW;
+
+		typedef LONG(WINAPI *RICE_RTLGETVERSION)(RICE_OSVERSIONINFOEXW*);
+
+		HMODULE ntdll = ::GetModuleHandle(_T("ntdll.dll"));
+		RICE_RTLGETVERSION rtlGetVersion = NULL;
+		if (ntdll != NULL)
+		{
+			rtlGetVersion = (RICE_RTLGETVERSION)::GetProcAddress(ntdll, "RtlGetVersion");
+		}
+
+		if (rtlGetVersion != NULL)
+		{
+			RICE_OSVERSIONINFOEXW version = { 0 };
+			version.dwOSVersionInfoSize = sizeof(version);
+			if (rtlGetVersion(&version) == 0)
+			{
+				s_bSupported = (version.dwMajorVersion > 10) ||
+					(version.dwMajorVersion == 10 && version.dwMinorVersion == 0 && version.dwBuildNumber >= RICE_SYSTEMBACKDROP_BUILD);
+			}
+		}
+	}
+
+	return s_bSupported;
+}
+
 void DittoRiceFillRect(CDC* pDC, const CRect& rect)
 {
-	// Black pixels are "unpainted" to DWM on an acrylic window, so this both
-	// shows the frosted backdrop and clears any stale pixels in the region.
+	if (pDC == NULL)
+	{
+		return;
+	}
+
+	// On the legacy accent acrylic black pixels show the frosted backdrop.
+	// Fill them so stale pixels also clear. On the system backdrop the
+	// unpainted pixels show the backdrop and any fill would cover it, so
+	// painting the background is skipped entirely on that path.
+	HWND hWnd = ::WindowFromDC(pDC->m_hDC);
+	if (hWnd != NULL && DittoWindowRiceMode(hWnd) == RICE_MODE_BACKDROP)
+	{
+		return;
+	}
+
 	pDC->FillSolidRect(rect, RGB(0, 0, 0));
 }
 
@@ -214,8 +311,8 @@ void ApplyRiceToWindow(HWND hWnd, COLORREF backgroundColor)
 	RICE_DWMSETWINDOWATTRIBUTE dwmSetWindowAttribute = RiceDwmSetWindowAttribute();
 	if (dwmSetWindowAttribute != NULL)
 	{
-		// DWM builds the acrylic material from the window's dark/light mode, so the
-		// theme tint only reads correctly when the window is marked dark.
+		// The acrylic materials are built from the window's dark/light mode, so the
+		// frosted look only reads correctly when the window is marked dark.
 		BOOL bDarkMode = TRUE;
 		dwmSetWindowAttribute(hWnd, RICE_DWMWA_USE_IMMERSIVE_DARK_MODE, &bDarkMode, sizeof(bDarkMode));
 		dwmSetWindowAttribute(hWnd, RICE_DWMWA_USE_IMMERSIVE_DARK_MODE_OLD, &bDarkMode, sizeof(bDarkMode));
@@ -226,8 +323,7 @@ void ApplyRiceToWindow(HWND hWnd, COLORREF backgroundColor)
 
 	// Window transparency helpers (Windhawk mods, older transparency paths) can
 	// leave the legacy DWM blur-behind flag enabled, which switches the window to
-	// per-pixel-alpha compositing: the black "unpainted" fills then show whatever
-	// is behind the window, sharp, instead of the frosted backdrop. Clear it so
+	// per-pixel-alpha compositing and destroys the frosted backdrop. Clear it so
 	// this re-application always starts from the plain acrylic state.
 	RICE_DWMENABLEBLURBEHINDWINDOW dwmEnableBlurBehindWindow = RiceDwmEnableBlurBehindWindow();
 	if (dwmEnableBlurBehindWindow != NULL)
@@ -238,14 +334,48 @@ void ApplyRiceToWindow(HWND hWnd, COLORREF backgroundColor)
 		dwmEnableBlurBehindWindow(hWnd, &blurBehind);
 	}
 
-	// Note: no DwmExtendFrameIntoClientArea here. Re-extending the frame with
-	// (-1,-1,-1,-1) adds a visible glass-edge haze at the rounded corners that
-	// the original look does not have, and the accent policy composites fine
-	// without an explicit extension on a window that was never touched by one.
+	// Preferred path: the documented system acrylic backdrop (Windows 11 22H2+).
+	// DWM renders the material inside the window's rounded corners itself, with no
+	// edge or corner falloff, which is what the accent-acrylic corners show.
+	// The backdrop state is zeroed by the same runtime events that reset the
+	// accent state (fullscreen games, Windhawk mod unload/restore), so both the
+	// frame extension and the backdrop type are set again on every re-apply.
+	int nBackdropMode = RICE_MODE_ACCENT;
 
+	RICE_DWMEXTENDFRAMEINTOCLIENTAREA dwmExtendFrame = RiceDwmExtendFrameIntoClientArea();
+	if (dwmSetWindowAttribute != NULL && dwmExtendFrame != NULL && RiceOsSupportsSystemBackdrop())
+	{
+		RICE_MARGINS margins = { -1, -1, -1, -1 };
+		if (dwmExtendFrame(hWnd, &margins) == 0)
+		{
+			int nBackdropType = RICE_DWMSBT_TRANSIENTWINDOW;
+			if (dwmSetWindowAttribute(hWnd, RICE_DWMWA_SYSTEMBACKDROP_TYPE, &nBackdropType, sizeof(nBackdropType)) == 0)
+			{
+				nBackdropMode = RICE_MODE_BACKDROP;
+			}
+			else
+			{
+				// The attribute refused, so undo the extension to keep the
+				// legacy fallback pixel-identical to its previous behaviour.
+				RICE_MARGINS zero = { 0, 0, 0, 0 };
+				dwmExtendFrame(hWnd, &zero);
+			}
+		}
+	}
+
+	::RemoveProp(hWnd, _T("DittoRiceMode"));
 	::SetProp(hWnd, _T("DittoRiceEnabled"), (HANDLE)1);
 
-	RiceSetAccent(hWnd, RICE_ACCENT_STATE_ACRYLIC_BLURBEHIND, backgroundColor);
+	if (nBackdropMode == RICE_MODE_BACKDROP)
+	{
+		::SetProp(hWnd, _T("DittoRiceMode"), (HANDLE)(INT_PTR)RICE_MODE_BACKDROP);
+	}
+	else
+	{
+		// Legacy fallback (older systems): undocumented accent acrylic, where the
+		// frame stays unextended and black client pixels show the backdrop.
+		RiceSetAccent(hWnd, RICE_ACCENT_STATE_ACRYLIC_BLURBEHIND, backgroundColor);
+	}
 }
 
 void RemoveRiceFromWindow(HWND hWnd)
@@ -256,12 +386,24 @@ void RemoveRiceFromWindow(HWND hWnd)
 	}
 
 	::RemoveProp(hWnd, _T("DittoRiceEnabled"));
+	::RemoveProp(hWnd, _T("DittoRiceMode"));
 
 	RICE_DWMSETWINDOWATTRIBUTE dwmSetWindowAttribute = RiceDwmSetWindowAttribute();
+	RICE_DWMEXTENDFRAMEINTOCLIENTAREA dwmExtendFrame = RiceDwmExtendFrameIntoClientArea();
+
 	if (dwmSetWindowAttribute != NULL)
 	{
 		DWORD nCornerPreference = RICE_DWMWCP_DEFAULT;
 		dwmSetWindowAttribute(hWnd, RICE_DWMWA_WINDOW_CORNER_PREFERENCE, &nCornerPreference, sizeof(nCornerPreference));
+
+		int nBackdropType = RICE_DWMSBT_AUTO;
+		dwmSetWindowAttribute(hWnd, RICE_DWMWA_SYSTEMBACKDROP_TYPE, &nBackdropType, sizeof(nBackdropType));
+	}
+
+	if (dwmExtendFrame != NULL)
+	{
+		RICE_MARGINS zero = { 0, 0, 0, 0 };
+		dwmExtendFrame(hWnd, &zero);
 	}
 
 	RiceSetAccent(hWnd, RICE_ACCENT_STATE_DISABLED, RGB(0, 0, 0));
@@ -513,14 +655,23 @@ void CDittoWindow::DoNcPaint(CWnd *pWnd)
 	// Draw the window border
 	CRect rcBorder(0, 0, lWidth, rcFrame.Height());
 
+	BOOL bRiceActive = DittoRiceEnabled() && DittoWindowIsRiced(pWnd->m_hWnd);
+
 	int border = m_dpi.Scale(2);
 	int widthHeight = m_dpi.Scale(16);
 
-	for (int x = 0; x < border; x++)
+	if (bRiceActive == false)
 	{
-		dc.Draw3dRect(rcBorder, m_border, m_border);
-		rcBorder.DeflateRect(1, 1, 1, 1);
+		for (int x = 0; x < border; x++)
+		{
+			dc.Draw3dRect(rcBorder, m_border, m_border);
+			rcBorder.DeflateRect(1, 1, 1, 1);
+		}
 	}
+	// In rice mode the frosted backdrop draws its own corner-fitting outline,
+	// so the square GDI border is skipped: its square corners get clipped away
+	// by the rounded window shape and leave broken, faded corner segments.
+	rcBorder = CRect(0, 0, lWidth, rcFrame.Height());
 
 	int iconArea = 0;
 	int index = 0;
@@ -663,12 +814,12 @@ void CDittoWindow::DoNcPaint(CWnd *pWnd)
 	}
 
 
-	if (DittoRiceEnabled() && DittoWindowIsRiced(pWnd->m_hWnd))
+	if (bRiceActive)
 	{
-		// Leave the caption strip transparent so the frosted backdrop shows through.
-		HBRUSH riceBrush = (HBRUSH)::GetStockObject(BLACK_BRUSH);
-		::FillRect(dc, &leftRect, riceBrush);
-		::FillRect(dc, &rightRect, riceBrush);
+		// Leave the caption strip showing the frosted backdrop; the fill
+		// helper paints blank-frost black only on the legacy accent path.
+		DittoRiceFillRect(&dc, leftRect);
+		DittoRiceFillRect(&dc, rightRect);
 	}
 	else
 	{
